@@ -1,3 +1,4 @@
+#Kevin Neal
 #Using R to run a Species Distribution Model with climate projections for the western spadefoot toad, _Spea hammondii_
 setwd("C:/Users/Kevin/Google Drive/UCLA Courses or Lab meetings etc/EEB 234/Final Project files")
 
@@ -10,7 +11,7 @@ library(mapdata)
 library(ggplot2)
 library(rJava)
 library(rgdal)
-
+library(raster)
 
 speaGBIFraw <- read.table("Spea_hammondii_rawGBIFoutput.txt", header=TRUE, fill = TRUE, sep = "\t", quote="") #raw GBIF data requires these arguments for importing
 #contains locality points for Spea hammondii, the western spadefoot toad
@@ -157,9 +158,7 @@ plot(shambcENMeval@predictions[[which (shambcENMeval@results$delta.AICc == 0) ]]
 points(shambcENMeval@occ.pts)
 shamnarrowbcENMeval@overlap #? see manual about this
 #***I should definitely subset the data before running, such that only 1 or 2 points are in any given cell...
-sham_p = kfold(speasel, 5) #vector of group assignments, splitting speasel into 5 eval groups
-sham_a = kfold(pseudoabscoords, 5) #same for the background points
-test = 2
+
 colnames(pseudoabscoords)[1] <- "Longitude"
 colnames(pseudoabscoords)[2] <- "Latitude"
 ?stack
@@ -199,26 +198,29 @@ writeRaster(bc2070bilstack, filename="bioclim2070_CN_rcp85.grd", overwrite=T) #s
 #names(ShamCmip2070) <- names(bclim2.5Shamnarrow) #maxent() requires projectionlayers to be titled "bio1, bio2,..."
 #names(ShamCmip2070)
 
-train_p = speasel[sham_p!=test, c("Longitude", "Latitude")]
-train_a = pseudoabscoords[sham_a!=test, c("Longitude", "Latitude")]
-test_p = speasel[sham_p==test, c("Longitude", "Latitude")]
-test_a = pseudoabscoords[sham_a!=test, c("Longitude", "Latitude")]
+sham_p = kfold(speasel, 5) #vector of group assignments, splitting speasel into 5 eval groups
+sham_a = kfold(pseudoabscoords, 5) #same for the background points
+test = 2 #select which of the 5 groups to use as testgroup
+train_p = speasel[sham_p!=test, c("Longitude", "Latitude")] #presence points for training model
+train_a = pseudoabscoords[sham_a!=test, c("Longitude", "Latitude")] #absence points for training model
+test_p = speasel[sham_p==test, c("Longitude", "Latitude")] #presence points for testing model
+test_a = pseudoabscoords[sham_a!=test, c("Longitude", "Latitude")] #absence points for testing model
+
 maxentrun <- maxent(bclim2.5Shamnarrow, speasel, a=pseudoabscoords, path="maxentrun", args=c("-J", "-P"))
+#runs maxent with a=backgroundpoints, path=folder to send outputs to, args: -J does jackknife, -P shows response curves
 #for projecting onto other layers/scenarios: add arg "projectionlayers=layersdirectory"
 maxentfuture <- maxent(bclim2.5Shamnarrow, speasel, a=pseudoabscoords, path="maxentrunfuture", args=c("-J", "-P", "projectionlayers=bioclim2070_CN_rcp85"))
 maxentfuturenopseudo <- maxent(bclim2.5Shamnarrow, speasel, path="maxentrunfuturenopseudo", args=c("-J", "-P", "projectionlayers=bioclim2070_CN_rcp85"))
 #try a different future model... this one seems unusual...
 
 
-e = evaluate(test_p, test_a, maxentrun, bclim2.5Shamnarrow)
+e = evaluate(test_p, test_a, maxentrun, bclim2.5Shamnarrow) #evaluates model; info should also be in maxent.html file
 e
 par(mfrow=c(1,2))
-pred_me = predict(maxentrun, bclim2.5Shamnarrow) #could I use this to do a climate projection?
-pred_metest = predict(maxentrun, bclim2.5Shamnarrow)
+pred_me = predict(maxentrun, bclim2.5Shamnarrow) #final map output showing suitability/probability of occurrence; also in maxent.html file, or should be
 plot(pred_me, 1, cex=0.5, legend=T, mar=par("mar"), main="Predicted presence of western spadefoots")
-plot(pred_metest, 1, cex=0.5, legend=T, mar=par("mar"), main="uncertain future prediction thing, don't trust")
 pred_fut2 <- predict(maxentfuture, bclim2.5Shamnarrow)
-plot(pred_fut2, 1, cex=0.5, legend=T, mar=par("mar"), main="futuuuure")
+plot(pred_fut2, 1, cex=0.5, legend=T, mar=par("mar"), main="uncertain future prediction thing, don't trust")
 #the run variable matters; the raster stack in there doesn't... I don't think...
 
 ?predict
